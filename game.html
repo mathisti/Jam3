@@ -532,7 +532,7 @@ function gameLoop(){
 		}
 		if((hero.x - hero.w < 0) && (!princess.isCaptured)){
 			princess.isCaptured = true;
-			alert('Secret ending, but this was not how you were supposed to win.')
+			alert('Secret ending, maybe the hero was no hero after all.')
 		}
 		
 		requestAnimationFrame(gameLoop);
