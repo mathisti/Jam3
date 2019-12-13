@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<link href="./styles/main.css" rel="stylesheet" type="text/css"/>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	
+</head>
+<canvas id="canvas" width="1024" height="512"></canvas>
+<script>
+const CANVAS = document.getElementById("canvas");
+const C = CANVAS.getContext("2d");
+const W = CANVAS.width; // window WIDTH
+const H = CANVAS.height; // window HEIGHT
+const GROUNDLEVEL = 370;
+
+var heroDone = false;
+
+document.addEventListener("keydown", keyboard);
+document.addEventListener("keyup", keyboard);
+var key = {
+    a:false,
+    d:false,
+	j:false
+};
+function keyboard(evt){
+    state = (evt.type == "keydown")? true:false;
+    switch(evt.key){
+        case 'a': 
+			key.a = state;
+			break;
+        case 'd': 
+			key.d = state;
+			break;
+		case 'j': 
+			key.j = state; 
+			break;
+    }
+}
+
+
+function drawRect(x, y, w, h, col){ // Draw Rectangle
+    C.fillStyle = col;
+    C.fillRect(x, y, w, h);
+}
+
+function drawRectRotation(x, y, w, h, col, r){
+    C.save();
+    C.translate(x, y);
+    C.rotate(r);
+    drawRect(-w/2, -h/2, w, h, col);
+    C.restore();
+}
+
+function clear(col){
+    drawRect(0, 0, W, H, col);
+}
+
+function walkInDirection(x, y, spd, dir){
+    x += Math.cos(dir)*spd;
+    y += Math.sin(dir)*spd;
+    return [x, y];
+}
+
+function dist(o1, o2){      // Vector operation, returns distance between two objects
+    var dx = o1.x - o2.x;
+    var dy = o1.y - o2.y;
+
+    var len = Math.sqrt(dx*dx + dy*dy);
+    return len;
+}
+
+
+function updateGobs(){
+    for(var i = goblinGang.length-1; i >= 0; i--){
+        goblinGang[i].update();
+        if(goblinGang[i].isDead){
+            goblinGang.splice(i,1);
+        }
+    }
+}
+
+function drawGobs(){
+    for(var i in goblinGang){
+        goblinGang[i].draw();
+    }
+}
+
+bloodSplat = function(x, y){
+    this.x = x;
+    this.y = y;
+    this.xv = Math.random()*2-1;
+    this.yv = Math.random()*2-1;
+    this.col = "red";
+    this.s = Math.random()*4+1;
+
+    this.update = function(){
+        this.x += this.xv;
+        this.y += this.yv;
+        if(this.s > 0) this.s -= 0.05;
+    }
+
+    this.draw = function(){
+        drawRect(this.x, this.y, this.s, this.s, this.col);
+    }
+}
+
+function makeBlood(arr, x, y){
+    for(var i = 0; i < 20; i++)
+        arr.push(new bloodSplat(x, y));
+}
+
+Fire = function(x, y, xv, yv){
+    this.x = x;
+    this.y = y;
+    this.xv = xv + Math.random()*0.2-0.1;
+    this.yv = yv + Math.random()*0.2-0.1;
+    this.s = 60;
+
+    this.draw = function(){
+        drawRect(this.x, this.y, this.s, this.s, "yellow");
+    }
+
+    this.update = function(){
+        this.x += this.xv;
+        this.y += this.yv;
+        if((dist(hero, this) < 15) && (!hero.hit)){
+            makeBlood(blood, hero.x, hero.y);
+            this.s = 0;
+			hero.hit = true;
+        }
+    }
+}
+
+
+function makeFire(x, y, vx, vy){
+    flames.push(new Fire(x, y, vx, vy));
+}
+
+function breatheFlamesToward(o1, o2, spd){
+    var dx = o1.x - o2.x;
+    var dy = o1.y - o2.y;
+    var len = dist(o1, o2);
+    if(len != 0){
+        dx /= len;
+        dy /= len;
+    }
+
+    dx *= spd;
+    dy *= spd;
+    
+    makeFire(o2.x, o2.y, dx, dy);
+}
+
+function updateFlames(){
+    for(var i = flames.length-1; i >= 0; i--){
+        flames[i].update();
+        if(flames[i].s < 0){
+            flames.splice(i,1);
+        }
+    }
+}
+
+function drawFlames(){
+    for(var i in flames){
+        flames[i].draw();
+    }
+}
+
+
+function updateBlood(){
+    for(var i = blood.length-1; i >= 0; i--){
+        blood[i].update();
+        if(blood[i].s < 0){
+            blood.splice(i,1);
+        }
+    }
+}
+
+function drawBlood(){
+    for(var i in blood){
+        blood[i].draw();
+    }
+}
+
+
+Background = function(path){
+	this.src = path;
+    this.img = new Image();
+    this.img.src = this.src;
+	
+	this.draw = function(){
+		C.drawImage(
+			this.img,
+			0,
+			0,
+			W,
+			H
+		);
+	}
+}
+
+
+Sprite = function(path, type){
+    this.src = path;
+    this.img = new Image();
+    this.img.src = this.src;
+
+    if(type == "knight"){
+		this.draw = function(x, y, w, h){
+			C.save();
+			C.translate(x, y);
+			//C.scale(1, 1);
+			C.drawImage(
+				this.img,
+				-w,
+				-h*1.3,
+				w*2,
+				h*2
+			);
+			C.restore();
+		}
+	}
+	
+	else if(type == "dragon"){
+		this.draw = function(x, y, w, h){
+			C.save();
+			C.translate(x, y);
+			C.scale(-1, 1);
+			C.drawImage(
+				this.img,
+				-w/1.5,
+				-h/1.5,
+				w*1.5,
+				h*1.5
+			);
+			C.restore();
+		}
+	}
+	
+	else if(type == "princess"){
+		this.draw = function(x, y, w, h){
+			C.save();
+			C.translate(x, y);
+			C.drawImage(
+				this.img,
+				-w*0.7,
+				-h*0.4,
+				w*2.4,
+				h*1.5
+			);
+			C.restore();
+		}
+	}
+	
+	else if(type == "goblin"){
+		this.draw = function(x, y, w, h){
+			C.save();
+			C.translate(x, y);
+			C.drawImage(
+				this.img,
+				-w/2,
+				-h/2,
+				w*2.5,
+				h*2.5
+			);
+			C.restore();
+		}
+	}
+}
+
+Animations = function(path, type){
+    this.idleSprites = [];
+    this.moveSprites = [];
+    this.attackSprites = [];
+	
+	this.path = path + type;
+	this.currentSprites = this.idleSprites;
+	this.maxFrame = 0;
+	this.maxFrameIdle = 0;
+	this.maxFrameWalk = 0;
+	this.maxFrameAttack = 0;
+	this.currentFrame = 0;
+	this.interval = 0;
+	this.threshhold = 0;
+	hasIdle = false;
+	hasWalk = false;
+	hasAttack = false;
+	
+	if(type == "knight"){
+		hasIdle = true;
+		hasWalk = true;
+		this.maxFrameIdle = 24;
+		this.maxFrameWalk = 11;
+		this.currentFrame = 0;
+		this.interval = 0;
+		this.threshhold = 5;
+	}
+	
+    else if(type == "dragon"){
+		hasIdle = true;
+		hasWalk = true;
+		//hasAttack = true;
+		this.maxFrameIdle = 15;
+		this.maxFrameWalk = 11;
+		this.maxFrameAttack = 11;
+		this.currentFrame = 0;
+		this.interval = 0;
+		this.threshhold = 5;
+	}
+	
+	else if(type == "princess"){
+		hasIdle = true;
+		this.maxFrameIdle = 24;
+		this.currentFrame = 0;
+		this.interval = 0;
+		this.threshhold = 5;
+	}
+	
+	else if(type == "goblin"){
+		hasIdle = true;
+		this.maxFrameIdle = 7;
+		this.currentFrame = 0;
+		this.interval = 0;
+		this.threshhold = 10;
+	}
+
+	if((!hasIdle) && (!hasWalk) && (!hasAttack)){
+		console.log("Error: has no animations!")
+	}
+	
+	this.loadAnimations = function(){
+		var path = "";
+		if(hasIdle){
+			for(var i = 0; i <= this.maxFrameIdle; i++){
+				path = this.path + "/" + type + "_idle" + i + ".png";
+				this.idleSprites.push(new Sprite(path, type));
+			}
+		}
+		
+		if(hasWalk){
+			for(var i = 0; i <= this.maxFrameWalk; i++){
+				path = this.path + "/" + type + "_walk" + i + ".png";
+				this.moveSprites.push(new Sprite(path, type));
+			}
+		}
+		
+		/*if(hasAttack){
+			for(var i = 0; i <= this.maxFrameAttack; i++){
+				path = this.path + "/" + type + "_attack" + i + ".png";
+				this.attackSprites.push(new Sprite(path));
+			}
+		}*/
+	}
+	
+	this.draw = function(x, y, w, h){
+		this.currentSprites[this.currentFrame].draw(x, y, w, h);
+	}
+
+	this.drawOne = function(k){
+		this.idleSprites[k].draw();
+	}
+
+	this.cycle = function(state){
+		switch(state){
+			case "idle": this.currentSprites = this.idleSprites; this.maxFrame = this.maxFrameIdle; break;
+			case "walk": this.currentSprites = this.moveSprites; this.maxFrame = this.maxFrameWalk; break;
+			case "attack": this.currentSprites = this.attackSprites; this.maxFrame = this.maxFrameAttack; break;
+		}
+
+		
+		if(this.interval > this.threshhold){
+			this.currentFrame++;
+			this.interval = 0;
+		}
+		if(this.currentFrame > this.maxFrame) this.currentFrame = 0;
+		this.interval++;
+	}
+}
+
+
+Player = function(x, y, w, h, canshoot, active, target, type){
+    this.x = x;
+    this.y = y;
+    this.w = w;
+	this.h = h;
+    this.rotation = 0;
+    this.rotationSpd = 0.05;
+    this.walkSpd = 1;
+	this.canshoot = canshoot;
+	this.active = active
+	this.hit = false;
+	this.type = type;
+	isdead = false;
+	
+	if(this.type == "knight") this.animation = new Animations("./assets/sprites/", "knight");
+	if(this.type == "dragon") this.animation = new Animations("./assets/sprites/", "dragon");
+	this.animation.loadAnimations();
+    
+	
+    this.draw = function(){
+		this.animation.draw(this.x, this.y, this.w, this.h);
+    }
+	
+    this.update = function(){
+		var state = "idle";
+		if(this.active){
+			var newDirection = [this.x, this.y];
+			if(key.d){
+				state = "walk";
+				newDirection = walkInDirection(this.x, this.y, this.walkSpd, this.rotation);
+			}
+			if(key.a){
+				state = "walk";
+				newDirection = walkInDirection(this.x, this.y, -this.walkSpd, this.rotation);
+			}
+			this.x = newDirection[0];
+			this.y = newDirection[1];
+			
+			if(canshoot){
+				if(key.j) {
+					//state = "attack"
+					breatheFlamesToward(target, this, 2.0);
+				}
+			}
+		}
+		this.animation.cycle(state);
+	}
+	
+	this.shoot = function() {
+		
+	}
+}
+	
+Goblin = function(x, y, w, h) {
+	this.x = x;
+    this.y = y;
+    this.w = w;
+	this.h = h;
+	this.isDead = false;
+	this.deathRadius = this.w*0.6;
+	
+	this.animation = new Animations("./assets/sprites/", "goblin");
+	this.animation.loadAnimations();
+	
+    this.draw = function(){
+		this.animation.draw(this.x, this.y, this.w, this.h);
+    }
+	
+	this.update = function() {
+		var distanceToPlayer = dist(hero, this);
+        var state = "idle";
+		this.animation.cycle(state);
+		if(distanceToPlayer < this.deathRadius){
+            this.isDead = true;   
+			makeBlood(blood, this.x, this.y);
+        }
+	}
+}
+
+Princess = function(x, y, w, h){
+	this.x = x;
+    this.y = y;
+    this.w = w;
+	this.h = h;
+	this.isCaptured = false;
+	this.deathRadius = this.w*0.6;
+	
+	
+	this.animation = new Animations("./assets/sprites/", "princess");
+	this.animation.loadAnimations();
+	
+	this.draw = function(){
+		this.animation.draw(this.x, this.y, this.w, this.h);
+    }
+	
+	this.update = function() {
+		var distanceToPlayer = dist(dragon, this);
+		var state = "idle";
+		this.animation.cycle(state);
+		if((distanceToPlayer < this.deathRadius) && (hero.hit) && (!this.isCaptured)){
+			this.isCaptured = true;
+            alert("You successfully stopped the hero and captured the princess!")
+        }
+	}
+} 
+
+
+// Game setup   ----------------------------
+var bg = new Background("./assets/castle_backround.png");
+var hero = new Player(80, GROUNDLEVEL, 50, 50, false, true, null, "knight");
+var dragon = new Player(100, GROUNDLEVEL-35, 160, 120, true, false, hero, "dragon");
+var princess = new Princess(900, GROUNDLEVEL - 20, 30, 50);
+var goblinGang = [
+	new Goblin(150, GROUNDLEVEL, 20, 20),
+	new Goblin(300, GROUNDLEVEL, 20, 20),
+	new Goblin(500, GROUNDLEVEL, 20, 20)
+];
+var flames = [];
+var blood = [];
+//---------------------------- End game setup
+// RECURSIVE MAIN GAMELOOP
+
+function gameLoop(){
+    
+	if(!heroDone){
+		clear("rgba(0, 0, 0, 1.0)");
+		
+		// ALL UPDATE FUNCTION MUST COME BELOW THIS---------------
+		hero.update();
+		princess.update();
+		updateGobs();
+		updateBlood();
+		
+		// ---------------------------------------------END updates
+		
+		// ALL DRAW FUNCTION MUST COME BELOW THIS------------------
+		bg.draw();
+		drawGobs();
+		hero.draw();
+		drawBlood();
+		princess.draw();
+		//------------------ --------------------------END Drawings
+		if (hero.x + hero.w > princess.x + 30) {
+		hero.active = false;
+		dragon.active = true;
+		heroDone = true;
+		hero.x = 800;
+		console.log('saved the Princess')
+		}
+		if((hero.x - hero.w < 0) && (!princess.isCaptured)){
+			princess.isCaptured = true;
+			alert('Secret ending, but this was not how you were supposed to win.')
+		}
+		
+		requestAnimationFrame(gameLoop);
+	}
+	else if(heroDone){
+		clear("rgba(0, 0, 0, 1.0)");
+		
+		// ALL UPDATE FUNCTION MUST COME BELOW THIS---------------
+		dragon.update();
+		if(!hero.hit) hero.update();
+		princess.update();
+		updateFlames();
+		updateBlood();
+		
+		// ---------------------------------------------END updates
+		
+		// ALL DRAW FUNCTION MUST COME BELOW THIS------------------
+		bg.draw();
+		if(!hero.hit) hero.draw();
+		princess.draw();
+		drawFlames();
+		dragon.draw();
+		drawBlood();
+		
+		//------------------ --------------------------END Drawings
+		requestAnimationFrame(gameLoop);
+	}
+}
+requestAnimationFrame(gameLoop);
+</script>
+<body>
+<pre>
+You must stop the hero from saving the princess and capture her instead!
+</pre>
+
+<h2>How to play</h2>
+<pre>
+A and D to move left and right
+J (can hold) to breathe fire (only when dragon).
+</pre>
+</body>
+</html>
