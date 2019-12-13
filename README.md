@@ -1,5 +1,6 @@
 # Jam3
 #### Theme: Stop the Hero
+##### To play just clone or download and unpack and run "game.html" in any browser.
 ##### Controls:
 A and D to moce left and right. <br/>
 J to breathe fire <br/>
